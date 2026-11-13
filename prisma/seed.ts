@@ -223,6 +223,35 @@ async function main() {
     },
   });
 
+  // ─── TURNOVER TAX RULE ───────────────────────────────────────────────────────
+  // ⚠️  IMPORTANT: This rate is a DRAFT placeholder.
+  //    Verify the current rate against ZRA publications or the Income Tax Act
+  //    Cap 323 (Zambia) before using in a production context.
+  //    The rate widely cited is 4% of gross taxable turnover, but this MUST be
+  //    independently confirmed. Set isDraft=false only after verification.
+  await prisma.taxRule.upsert({
+    where: { id: "tot-rule-2024" },
+    update: {},
+    create: {
+      id: "tot-rule-2024",
+      name: "Turnover Tax Rate 2024 (DRAFT — verify with ZRA)",
+      taxType: "TURNOVER_TAX",
+      description:
+        "Zambia Turnover Tax (TOT) flat rate. Applicable to businesses whose annual gross " +
+        "turnover does not exceed the statutory threshold and are not VAT-registered. " +
+        "Rate and threshold MUST be verified against current ZRA guidelines.",
+      flatRate: 4, // ⚠️ ILLUSTRATIVE — verify with ZRA
+      effectiveFrom: new Date("2024-01-01"),
+      source: "Income Tax Act Cap 323 of Zambia (verify edition year)",
+      notes:
+        "This record is a DRAFT. The 4% rate is widely cited for TOT in Zambia, " +
+        "but official verification is required before filing. Update isDraft to false " +
+        "and set verifiedAt after confirming with ZRA or a qualified tax practitioner.",
+      isDraft: true,
+      active: true,
+    },
+  });
+
   // ─── TEST BUSINESS: PEBBLES COLLEGE ──────────────────────────────────────────
   const business = await prisma.business.upsert({
     where: { id: "pebbles-college-001" },

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrgContext } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 
 export async function GET(
   _req: Request,
@@ -12,6 +13,11 @@ export async function GET(
     if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const ctx = await getOrgContext();
+
+    if (!hasPermission(ctx.role, "tax:view")) {
+      return NextResponse.json({ error: "Forbidden: tax:view required" }, { status: 403 });
+    }
+
     const { id } = await params;
 
     const doc = await prisma.taxReturnDocument.findFirst({
@@ -20,9 +26,17 @@ export async function GET(
     });
 
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    // Legacy documents may have been stored with a plain `url` before Blob integration.
+    // TaxReturnDocument only has blobUrl, so return 404 for missing blobs.
     if (!doc.blobUrl) return NextResponse.json({ error: "No file stored" }, { status: 404 });
 
-    const upstream = await fetch(doc.blobUrl);
+    let upstream: Response;
+    try {
+      upstream = await fetch(doc.blobUrl);
+    } catch {
+      return NextResponse.json({ error: "File storage unavailable" }, { status: 502 });
+    }
     if (!upstream.ok) return NextResponse.json({ error: "File unavailable" }, { status: 502 });
 
     await prisma.auditLog.create({

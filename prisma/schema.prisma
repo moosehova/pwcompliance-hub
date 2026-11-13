@@ -606,8 +606,9 @@ model TaxReturn {
   amendments      TaxReturn[]               @relation("TaxReturnAmendments")
   balanceSheet    TaxReturnBalanceSheet?
   incomeStatement TaxReturnIncomeStatement?
-  computation     TaxReturnComputation?
-  fixedAssets     FixedAsset[]
+  computation          TaxReturnComputation?
+  turnoverComputation  TurnoverTaxComputation?
+  fixedAssets          FixedAsset[]
   taxAdjustments  TaxAdjustment[]
   taxLosses       TaxLoss[]
   documents       TaxReturnDocument[]
@@ -1035,6 +1036,60 @@ enum TaxReturnReviewAction {
   REQUEST_CHANGES
   SUBMIT_TO_ZRA
   COMPLETE
+}
+
+// ─── TURNOVER TAX ─────────────────────────────────────────────────────────────
+// ⚠️  TAX RATES: The rate used here is CONFIGURABLE and must be verified against
+//    official ZRA publications or current Zambian Income Tax Act Cap 323.
+//    Do NOT rely on seeded values without independent ZRA verification.
+
+model TurnoverTaxComputation {
+  id          String @id @default(cuid())
+  taxReturnId String @unique
+
+  // ── Eligibility ──────────────────────────────────────────────────────────────
+  eligibilityChecked Boolean @default(false)
+  // Confirm annual gross turnover is below the TOT threshold (verify with ZRA)
+  annualTurnoverCheck Boolean @default(false)
+  // Confirm business is not VAT-registered (or VAT threshold not exceeded)
+  notVatRegistered    Boolean @default(false)
+  eligibilityNotes    String? @db.Text
+
+  // ── Gross turnover ───────────────────────────────────────────────────────────
+  grossTurnover Decimal @default(0)
+
+  // ── Statutory exclusions from gross turnover ─────────────────────────────────
+  exportSales       Decimal @default(0)
+  dividendIncome    Decimal @default(0)
+  interestIncome    Decimal @default(0)
+  rentalIncome      Decimal @default(0)
+  capitalGains      Decimal @default(0)
+  otherExclusions   Decimal @default(0)
+  exclusionNotes    String? @db.Text
+  totalExclusions   Decimal @default(0)
+
+  // ── Computation ──────────────────────────────────────────────────────────────
+  taxableTurnover Decimal @default(0)
+  // Rate sourced from TaxRule; stored here as a snapshot for audit integrity
+  taxRate         Decimal @default(0)
+  taxLiability    Decimal @default(0)
+
+  // ── Payments and credits ─────────────────────────────────────────────────────
+  quarterlyPayments Decimal @default(0)
+  whtCredits        Decimal @default(0)
+  otherCredits      Decimal @default(0)
+  totalCredits      Decimal @default(0)
+
+  netTaxPayable Decimal @default(0)
+  taxRefundable Decimal @default(0)
+
+  // ── Metadata ─────────────────────────────────────────────────────────────────
+  // Snapshot of the TaxRule applied, so the computation remains reproducible
+  taxRuleSnapshot Json?
+  notes           String?  @db.Text
+  updatedAt       DateTime @updatedAt
+
+  taxReturn TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
 }
 
 enum CapitalAllowanceCategory {

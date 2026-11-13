@@ -24,6 +24,7 @@ import {
   BookOpen,
   ListChecks,
   FolderOpen,
+  Percent,
 } from "lucide-react";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
@@ -58,6 +59,7 @@ const navItems: NavItem[] = [
       { label: "Overview", href: "/tax", icon: Calculator },
       { label: "Returns", href: "/tax/returns", icon: ListChecks },
       { label: "Documents", href: "/tax/documents", icon: FolderOpen },
+      { label: "Turnover Tax", href: "/tax/turnover", icon: Percent },
       { label: "Tax Rules", href: "/tax/rules", icon: BookOpen },
     ],
   },

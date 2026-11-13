@@ -3,18 +3,9 @@ import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrgContext } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
+import { validateUploadedFile, validationErrorMessage } from "@/lib/vault-validation";
 import type { TaxDocumentCategory } from "@prisma/client";
-
-const ALLOWED_MIME = new Set([
-  "application/pdf",
-  "image/jpeg", "image/png", "image/gif", "image/webp",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain", "text/csv",
-]);
-const MAX_BYTES = 25 * 1024 * 1024;
 
 export async function POST(req: Request) {
   try {
@@ -22,12 +13,21 @@ export async function POST(req: Request) {
     if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const ctx = await getOrgContext();
-    const fd = await req.formData();
 
+    // Require tax:prepare or document:manage to upload tax documents
+    if (!hasPermission(ctx.role, "tax:prepare") && !hasPermission(ctx.role, "document:manage")) {
+      return NextResponse.json({ error: "Forbidden: tax:prepare or document:manage required" }, { status: 403 });
+    }
+
+    const fd = await req.formData();
     const file = fd.get("file") as File | null;
-    if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    if (!ALLOWED_MIME.has(file.type)) return NextResponse.json({ error: "File type not permitted" }, { status: 422 });
-    if (file.size > MAX_BYTES) return NextResponse.json({ error: "File exceeds 25 MB" }, { status: 422 });
+
+    const validationError = validateUploadedFile(
+      file ? { name: file.name, type: file.type, size: file.size } : null as never
+    );
+    if (validationError) {
+      return NextResponse.json({ error: validationErrorMessage(validationError) }, { status: 422 });
+    }
 
     const taxReturnId = fd.get("taxReturnId") as string | null;
     const businessId = fd.get("businessId") as string | null;
@@ -38,14 +38,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Business not found" }, { status: 403 });
     }
 
-    // Verify tax return belongs to this org
     const taxReturn = await prisma.taxReturn.findFirst({
       where: { id: taxReturnId, organizationId: ctx.orgId },
       select: { id: true, taxYear: true },
     });
     if (!taxReturn) return NextResponse.json({ error: "Tax return not found" }, { status: 404 });
 
-    const name = (fd.get("name") as string | null) || file.name;
+    const name = (fd.get("name") as string | null) || file!.name;
     const description = fd.get("description") as string | undefined ?? undefined;
     const category = (fd.get("category") as TaxDocumentCategory | null) || "OTHER_SUPPORTING";
     const replaceDocId = fd.get("replaceDocId") as string | null;
@@ -62,9 +61,21 @@ export async function POST(req: Request) {
       versionNumber = existing.versionNumber + 1;
     }
 
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error("[vault/tax/upload] BLOB_READ_WRITE_TOKEN is not configured");
+      return NextResponse.json({ error: "File storage is not configured" }, { status: 503 });
+    }
+
     const docId = crypto.randomUUID().replace(/-/g, "");
-    const blobPath = `vault-tax/${ctx.orgId}/${taxReturnId}/${docId}/${file.name}`;
-    const blob = await put(blobPath, file, { access: "public" });
+    const blobPath = `vault-tax/${ctx.orgId}/${taxReturnId}/${docId}/${file!.name}`;
+
+    let blob: { url: string };
+    try {
+      blob = await put(blobPath, file!, { access: "public" });
+    } catch (blobErr) {
+      console.error("[vault/tax/upload] Vercel Blob error:", blobErr);
+      return NextResponse.json({ error: "File storage unavailable, please try again later" }, { status: 503 });
+    }
 
     const doc = await prisma.taxReturnDocument.create({
       data: {
@@ -76,8 +87,8 @@ export async function POST(req: Request) {
         description,
         category: category as TaxDocumentCategory,
         taxYear: taxReturn.taxYear,
-        mimeType: file.type,
-        size: file.size,
+        mimeType: file!.type,
+        size: file!.size,
         blobUrl: blob.url,
         versionNumber,
         versionOf,
