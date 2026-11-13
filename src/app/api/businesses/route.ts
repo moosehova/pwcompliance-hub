@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { getOrgContext } from "@/lib/session";
 
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const membership = await prisma.organizationMember.findFirst({ where: { userId: session.user.id } });
-    if (!membership) return NextResponse.json([], { status: 200 });
+    const ctx = await getOrgContext();
 
     const businesses = await prisma.business.findMany({
-      where: { organizationId: membership.organizationId, deletedAt: null },
+      where: { organizationId: ctx.orgId, deletedAt: null },
       select: { id: true, legalName: true, tradingName: true },
       orderBy: { legalName: "asc" },
     });

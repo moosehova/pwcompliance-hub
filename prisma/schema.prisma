@@ -20,12 +20,18 @@ model User {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
-  accounts      Account[]
-  sessions      Session[]
-  memberships   OrganizationMember[]
-  auditLogs     AuditLog[]
-  notifications Notification[]
-  uploadedDocs  Document[]
+  accounts              Account[]
+  sessions              Session[]
+  memberships           OrganizationMember[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  uploadedDocs          Document[]
+  preparedTaxReturns    TaxReturn[]          @relation("TaxReturnPreparer")
+  reviewedTaxReturns    TaxReturn[]          @relation("TaxReturnReviewer")
+  approvedTaxReturns    TaxReturn[]          @relation("TaxReturnApprover")
+  filedTaxReturns       TaxReturn[]          @relation("TaxReturnFiler")
+  taxReturnReviews      TaxReturnReview[]
+  taxReturnDocuments    TaxReturnDocument[]
 }
 
 model Account {
@@ -83,6 +89,7 @@ model Organization {
   members     OrganizationMember[]
   businesses  Business[]
   settings    OrganizationSetting[]
+  taxReturns  TaxReturn[]
 }
 
 model OrganizationMember {
@@ -139,18 +146,22 @@ model Business {
   updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?
 
-  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  employees          Employee[]
-  obligations        ComplianceObligation[]
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees            Employee[]
+  obligations          ComplianceObligation[]
   businessRequirements BusinessRequirement[]
-  payments           Payment[]
-  documents          Document[]
-  directors          Director[]
-  shareholders       Shareholder[]
-  payrolls           Payroll[]
-  auditLogs          AuditLog[]
-  reminders          Reminder[]
-  submissions        Submission[]
+  payments             Payment[]
+  documents            Document[]
+  directors            Director[]
+  shareholders         Shareholder[]
+  payrolls             Payroll[]
+  auditLogs            AuditLog[]
+  reminders            Reminder[]
+  submissions          Submission[]
+  taxReturns           TaxReturn[]
+  fixedAssets          FixedAsset[]
+  taxLosses            TaxLoss[]
+  taxReturnDocuments   TaxReturnDocument[]
 }
 
 model Director {
@@ -187,18 +198,18 @@ model Shareholder {
 // ─── AUTHORITY & COMPLIANCE ENGINE ───────────────────────────────────────────
 
 model Authority {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  name        String
-  fullName    String?
-  description String?
-  website     String?
+  id           String    @id @default(cuid())
+  code         String    @unique
+  name         String
+  fullName     String?
+  description  String?
+  website      String?
   contactEmail String?
   contactPhone String?
-  active      Boolean   @default(true)
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  active       Boolean   @default(true)
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   requirements ComplianceRequirement[]
   rules        AuthorityRule[]
@@ -209,26 +220,26 @@ model Authority {
 }
 
 model ComplianceRequirement {
-  id              String            @id @default(cuid())
-  authorityId     String
-  code            String
-  name            String
-  description     String?
-  frequency       RequirementFrequency
-  applicableTo    String[]
-  defaultDueDayOfMonth  Int?
-  defaultDueDayOfYear   String?
-  gracePeriodDays Int               @default(0)
-  active          Boolean           @default(true)
-  mandatory       Boolean           @default(true)
-  category        String?
-  notes           String?           @db.Text
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id                   String               @id @default(cuid())
+  authorityId          String
+  code                 String
+  name                 String
+  description          String?
+  frequency            RequirementFrequency
+  applicableTo         String[]
+  defaultDueDayOfMonth Int?
+  defaultDueDayOfYear  String?
+  gracePeriodDays      Int                  @default(0)
+  active               Boolean              @default(true)
+  mandatory            Boolean              @default(true)
+  category             String?
+  notes                String?              @db.Text
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
-  authority         Authority            @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  authority            Authority            @relation(fields: [authorityId], references: [id], onDelete: Cascade)
   businessRequirements BusinessRequirement[]
-  obligations       ComplianceObligation[]
+  obligations          ComplianceObligation[]
 
   @@unique([authorityId, code])
 }
@@ -250,55 +261,55 @@ model BusinessRequirement {
 }
 
 model ComplianceObligation {
-  id              String            @id @default(cuid())
-  businessId      String
-  authorityId     String
-  requirementId   String
-  title           String
-  periodLabel     String
-  periodStart     DateTime
-  periodEnd       DateTime
-  dueDate         DateTime
-  status          ObligationStatus  @default(UPCOMING)
-  amountDue       Decimal?
-  currency        String            @default("ZMW")
-  notes           String?           @db.Text
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  deletedAt       DateTime?
+  id            String           @id @default(cuid())
+  businessId    String
+  authorityId   String
+  requirementId String
+  title         String
+  periodLabel   String
+  periodStart   DateTime
+  periodEnd     DateTime
+  dueDate       DateTime
+  status        ObligationStatus @default(UPCOMING)
+  amountDue     Decimal?
+  currency      String           @default("ZMW")
+  notes         String?          @db.Text
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
 
-  business        Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  authority       Authority             @relation(fields: [authorityId], references: [id])
-  requirement     ComplianceRequirement @relation(fields: [requirementId], references: [id])
-  submissions     Submission[]
-  payments        Payment[]
-  documents       Document[]
-  reminders       Reminder[]
-  auditLogs       AuditLog[]
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority     Authority             @relation(fields: [authorityId], references: [id])
+  requirement   ComplianceRequirement @relation(fields: [requirementId], references: [id])
+  submissions   Submission[]
+  payments      Payment[]
+  documents     Document[]
+  reminders     Reminder[]
+  auditLogs     AuditLog[]
 }
 
 // ─── SUBMISSION ───────────────────────────────────────────────────────────────
 
 model Submission {
-  id            String           @id @default(cuid())
-  businessId    String
-  authorityId   String
-  obligationId  String?
-  referenceNo   String?
-  submittedAt   DateTime?
-  submittedBy   String?
-  method        String?
-  status        SubmissionStatus @default(DRAFT)
-  channel       String?
+  id             String           @id @default(cuid())
+  businessId     String
+  authorityId    String
+  obligationId   String?
+  referenceNo    String?
+  submittedAt    DateTime?
+  submittedBy    String?
+  method         String?
+  status         SubmissionStatus @default(DRAFT)
+  channel        String?
   confirmationNo String?
-  notes         String?          @db.Text
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  notes          String?          @db.Text
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  authority     Authority             @relation(fields: [authorityId], references: [id])
-  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
-  documents     Document[]
+  business   Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority  Authority             @relation(fields: [authorityId], references: [id])
+  obligation ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  documents  Document[]
 }
 
 // ─── PAYMENT ─────────────────────────────────────────────────────────────────
@@ -321,16 +332,16 @@ model Payment {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  authority     Authority             @relation(fields: [authorityId], references: [id])
-  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
-  receipts      Document[]
+  business   Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority  Authority             @relation(fields: [authorityId], references: [id])
+  obligation ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  receipts   Document[]
 }
 
 // ─── EMPLOYEE ─────────────────────────────────────────────────────────────────
 
 model Employee {
-  id               String           @id @default(cuid())
+  id               String         @id @default(cuid())
   businessId       String
   employeeNo       String?
   firstName        String
@@ -345,9 +356,9 @@ model Employee {
   department       String?
   employedAt       DateTime?
   terminatedAt     DateTime?
-  status           EmployeeStatus   @default(ACTIVE)
+  status           EmployeeStatus @default(ACTIVE)
   basicSalary      Decimal?
-  currency         String           @default("ZMW")
+  currency         String         @default("ZMW")
   napsaNumber      String?
   nhimaNumber      String?
   tpin             String?
@@ -356,12 +367,12 @@ model Employee {
   bankSortCode     String?
   emergencyContact String?
   emergencyPhone   String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?
 
-  business         Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  payrollItems     PayrollItem[]
+  business     Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  payrollItems PayrollItem[]
 
   @@unique([businessId, employeeNo])
 }
@@ -369,46 +380,46 @@ model Employee {
 // ─── PAYROLL ─────────────────────────────────────────────────────────────────
 
 model Payroll {
-  id            String        @id @default(cuid())
-  businessId    String
-  periodLabel   String
-  periodStart   DateTime
-  periodEnd     DateTime
-  status        PayrollStatus @default(DRAFT)
-  totalGross    Decimal       @default(0)
-  totalNapsa    Decimal       @default(0)
-  totalNhima    Decimal       @default(0)
-  totalPaye     Decimal       @default(0)
-  totalNet      Decimal       @default(0)
-  processedAt   DateTime?
-  notes         String?       @db.Text
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id          String        @id @default(cuid())
+  businessId  String
+  periodLabel String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      PayrollStatus @default(DRAFT)
+  totalGross  Decimal       @default(0)
+  totalNapsa  Decimal       @default(0)
+  totalNhima  Decimal       @default(0)
+  totalPaye   Decimal       @default(0)
+  totalNet    Decimal       @default(0)
+  processedAt DateTime?
+  notes       String?       @db.Text
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  items         PayrollItem[]
+  business Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items    PayrollItem[]
 }
 
 model PayrollItem {
-  id               String   @id @default(cuid())
-  payrollId        String
-  employeeId       String
-  basicSalary      Decimal  @default(0)
-  allowances       Decimal  @default(0)
-  grossSalary      Decimal  @default(0)
-  napsaEmployee    Decimal  @default(0)
-  napsaEmployer    Decimal  @default(0)
-  nhimaEmployee    Decimal  @default(0)
-  nhimaEmployer    Decimal  @default(0)
-  paye             Decimal  @default(0)
-  otherDeductions  Decimal  @default(0)
-  netSalary        Decimal  @default(0)
-  notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(cuid())
+  payrollId       String
+  employeeId      String
+  basicSalary     Decimal  @default(0)
+  allowances      Decimal  @default(0)
+  grossSalary     Decimal  @default(0)
+  napsaEmployee   Decimal  @default(0)
+  napsaEmployer   Decimal  @default(0)
+  nhimaEmployee   Decimal  @default(0)
+  nhimaEmployer   Decimal  @default(0)
+  paye            Decimal  @default(0)
+  otherDeductions Decimal  @default(0)
+  netSalary       Decimal  @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  payroll          Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payroll  Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([payrollId, employeeId])
 }
@@ -416,66 +427,66 @@ model PayrollItem {
 // ─── DOCUMENT ─────────────────────────────────────────────────────────────────
 
 model Document {
-  id            String       @id @default(cuid())
-  businessId    String
-  authorityId   String?
-  obligationId  String?
-  submissionId  String?
-  paymentId     String?
-  uploadedById  String
-  name          String
-  description   String?
-  category      DocumentCategory @default(OTHER)
-  mimeType      String?
-  size          Int?
-  url           String
-  expiryDate    DateTime?
-  periodLabel   String?
-  status        DocumentStatus @default(ACTIVE)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  deletedAt     DateTime?
+  id           String           @id @default(cuid())
+  businessId   String
+  authorityId  String?
+  obligationId String?
+  submissionId String?
+  paymentId    String?
+  uploadedById String
+  name         String
+  description  String?
+  category     DocumentCategory @default(OTHER)
+  mimeType     String?
+  size         Int?
+  url          String
+  expiryDate   DateTime?
+  periodLabel  String?
+  status       DocumentStatus   @default(ACTIVE)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
 
-  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  authority     Authority?            @relation(fields: [authorityId], references: [id])
-  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
-  submission    Submission?           @relation(fields: [submissionId], references: [id])
-  payment       Payment?              @relation(fields: [paymentId], references: [id])
-  uploadedBy    User                  @relation(fields: [uploadedById], references: [id])
+  business   Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority  Authority?            @relation(fields: [authorityId], references: [id])
+  obligation ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  submission Submission?           @relation(fields: [submissionId], references: [id])
+  payment    Payment?              @relation(fields: [paymentId], references: [id])
+  uploadedBy User                  @relation(fields: [uploadedById], references: [id])
 }
 
 // ─── REMINDERS & NOTIFICATIONS ───────────────────────────────────────────────
 
 model Reminder {
-  id            String         @id @default(cuid())
-  businessId    String
-  obligationId  String?
-  title         String
-  message       String?        @db.Text
-  dueDate       DateTime
-  scheduledAt   DateTime
-  sentAt        DateTime?
-  status        ReminderStatus @default(PENDING)
-  channel       String         @default("in_app")
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id           String         @id @default(cuid())
+  businessId   String
+  obligationId String?
+  title        String
+  message      String?        @db.Text
+  dueDate      DateTime
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  status       ReminderStatus @default(PENDING)
+  channel      String         @default("in_app")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  business   Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  obligation ComplianceObligation? @relation(fields: [obligationId], references: [id])
 }
 
 model Notification {
-  id        String             @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
   title     String
-  message   String             @db.Text
-  type      NotificationType   @default(INFO)
+  message   String           @db.Text
+  type      NotificationType @default(INFO)
   readAt    DateTime?
   link      String?
   metadata  Json?
-  createdAt DateTime           @default(now())
+  createdAt DateTime         @default(now())
 
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─── STATUTORY RULES ─────────────────────────────────────────────────────────
@@ -496,11 +507,11 @@ model AuthorityRule {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  authority     Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  authority Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
 }
 
 model TaxRule {
-  id            String    @id @default(cuid())
+  id            String      @id @default(cuid())
   name          String
   taxType       String
   description   String?
@@ -509,11 +520,15 @@ model TaxRule {
   effectiveFrom DateTime
   effectiveTo   DateTime?
   source        String?
-  notes         String?   @db.Text
-  active        Boolean   @default(true)
+  notes         String?     @db.Text
+  active        Boolean     @default(true)
   verifiedAt    DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  isDraft       Boolean     @default(false)
+  approvedById  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  taxReturns TaxReturn[]
 }
 
 model ContributionRule {
@@ -535,26 +550,295 @@ model ContributionRule {
   updatedAt        DateTime  @updatedAt
 }
 
+// ─── TAX PREPARATION ─────────────────────────────────────────────────────────
+
+model TaxReturn {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  businessId         String
+  taxType            TaxReturnType
+  taxYear            Int
+  periodStart        DateTime
+  periodEnd          DateTime
+  financialYearStart DateTime?
+  financialYearEnd   DateTime?
+  referenceNo        String?
+  status             TaxReturnStatus @default(DRAFT)
+  preparerId         String?
+  reviewerId         String?
+  approvedAt         DateTime?
+  approvedById       String?
+  submittedAt        DateTime?
+  submissionRef      String?
+  filedById          String?
+  filingReceipt      String?
+  paymentRef         String?
+  paymentDate        DateTime?
+  taxRuleId          String?
+  version            Int             @default(1)
+  isAmended          Boolean         @default(false)
+  amendedFromId      String?
+  notes              String?         @db.Text
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
+
+  organization    Organization              @relation(fields: [organizationId], references: [id])
+  business        Business                  @relation(fields: [businessId], references: [id])
+  preparer        User?                     @relation("TaxReturnPreparer", fields: [preparerId], references: [id])
+  reviewer        User?                     @relation("TaxReturnReviewer", fields: [reviewerId], references: [id])
+  approvedBy      User?                     @relation("TaxReturnApprover", fields: [approvedById], references: [id])
+  filedBy         User?                     @relation("TaxReturnFiler", fields: [filedById], references: [id])
+  taxRule         TaxRule?                  @relation(fields: [taxRuleId], references: [id])
+  amendedFrom     TaxReturn?                @relation("TaxReturnAmendments", fields: [amendedFromId], references: [id])
+  amendments      TaxReturn[]               @relation("TaxReturnAmendments")
+  balanceSheet    TaxReturnBalanceSheet?
+  incomeStatement TaxReturnIncomeStatement?
+  computation     TaxReturnComputation?
+  fixedAssets     FixedAsset[]
+  taxAdjustments  TaxAdjustment[]
+  taxLosses       TaxLoss[]
+  documents       TaxReturnDocument[]
+  reviews         TaxReturnReview[]
+
+  @@unique([businessId, taxType, taxYear, version])
+  @@index([organizationId])
+  @@index([businessId])
+  @@index([status])
+}
+
+model TaxReturnBalanceSheet {
+  id                         String    @id @default(cuid())
+  taxReturnId                String    @unique
+
+  // Non-current assets
+  ppe                        Decimal   @default(0)
+  intangibleAssets           Decimal   @default(0)
+  longTermInvestments        Decimal   @default(0)
+  otherNonCurrentAssets      Decimal   @default(0)
+  totalNonCurrentAssets      Decimal   @default(0)
+
+  // Current assets
+  inventory                  Decimal   @default(0)
+  tradeReceivables           Decimal   @default(0)
+  otherReceivables           Decimal   @default(0)
+  cashAndBank                Decimal   @default(0)
+  otherCurrentAssets         Decimal   @default(0)
+  totalCurrentAssets         Decimal   @default(0)
+
+  totalAssets                Decimal   @default(0)
+
+  // Current liabilities
+  tradePayables              Decimal   @default(0)
+  taxLiabilitiesCurrent      Decimal   @default(0)
+  currentBorrowings          Decimal   @default(0)
+  otherCurrentLiabilities    Decimal   @default(0)
+  totalCurrentLiabilities    Decimal   @default(0)
+
+  // Non-current liabilities
+  longTermBorrowings         Decimal   @default(0)
+  deferredTax                Decimal   @default(0)
+  otherNonCurrentLiabilities Decimal   @default(0)
+  totalNonCurrentLiabilities Decimal   @default(0)
+
+  totalLiabilities           Decimal   @default(0)
+
+  // Equity
+  shareCapital               Decimal   @default(0)
+  sharePremium               Decimal   @default(0)
+  retainedEarnings           Decimal   @default(0)
+  otherEquity                Decimal   @default(0)
+  totalEquity                Decimal   @default(0)
+
+  totalLiabilitiesAndEquity  Decimal   @default(0)
+
+  updatedAt                  DateTime  @updatedAt
+
+  taxReturn TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+}
+
+model TaxReturnIncomeStatement {
+  id                   String    @id @default(cuid())
+  taxReturnId          String    @unique
+
+  turnover             Decimal   @default(0)
+  otherOperatingIncome Decimal   @default(0)
+  totalRevenue         Decimal   @default(0)
+
+  costOfSales          Decimal   @default(0)
+  grossProfit          Decimal   @default(0)
+
+  adminExpenses        Decimal   @default(0)
+  sellingExpenses      Decimal   @default(0)
+  depreciation         Decimal   @default(0)
+  financeCharges       Decimal   @default(0)
+  otherExpenses        Decimal   @default(0)
+  totalExpenses        Decimal   @default(0)
+
+  profitBeforeTax      Decimal   @default(0)
+  taxExpense           Decimal   @default(0)
+  profitAfterTax       Decimal   @default(0)
+
+  updatedAt            DateTime  @updatedAt
+
+  taxReturn TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+}
+
+model TaxReturnComputation {
+  id                      String    @id @default(cuid())
+  taxReturnId             String    @unique
+
+  accountingProfit        Decimal   @default(0)
+
+  // Addbacks (disallowable expenses)
+  addbackDepreciation     Decimal   @default(0)
+  addbackEntertainment    Decimal   @default(0)
+  addbackFines            Decimal   @default(0)
+  addbackOther            Decimal   @default(0)
+  totalAddbacks           Decimal   @default(0)
+
+  // Allowable deductions
+  capitalAllowances       Decimal   @default(0)
+  otherAllowableDeductions Decimal  @default(0)
+  totalDeductions         Decimal   @default(0)
+
+  // Losses
+  lossesUtilised          Decimal   @default(0)
+
+  taxableProfit           Decimal   @default(0)
+
+  // Tax calculation
+  taxRate                 Decimal   @default(0)
+  grossTaxLiability       Decimal   @default(0)
+
+  // Credits
+  taxCredits              Decimal   @default(0)
+  advanceTaxPaid          Decimal   @default(0)
+  whtCredits              Decimal   @default(0)
+  totalCredits            Decimal   @default(0)
+
+  netTaxPayable           Decimal   @default(0)
+  taxRefundable           Decimal   @default(0)
+
+  taxRuleSnapshot         Json?
+
+  notes                   String?   @db.Text
+  updatedAt               DateTime  @updatedAt
+
+  taxReturn TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+}
+
+model FixedAsset {
+  id                     String                   @id @default(cuid())
+  taxReturnId            String
+  businessId             String
+  description            String
+  assetCategory          CapitalAllowanceCategory
+  acquisitionDate        DateTime?
+  acquisitionCost        Decimal                  @default(0)
+  businessUsePercent     Decimal                  @default(100)
+  qualifyingCost         Decimal                  @default(0)
+  disposalDate           DateTime?
+  disposalProceeds       Decimal?
+  taxWdvBrought          Decimal                  @default(0)
+  allowanceRate          Decimal                  @default(0)
+  calculatedAllowance    Decimal                  @default(0)
+  taxWdvCarried          Decimal                  @default(0)
+  accountingDepreciation Decimal                  @default(0)
+  notes                  String?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  taxReturn TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+  business  Business  @relation(fields: [businessId], references: [id])
+}
+
+model TaxAdjustment {
+  id          String   @id @default(cuid())
+  taxReturnId String
+  type        String   // "ADDBACK" | "DEDUCTION"
+  description String
+  amount      Decimal  @default(0)
+  reference   String?
+  notes       String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  taxReturn TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+}
+
+model TaxLoss {
+  id             String    @id @default(cuid())
+  businessId     String
+  taxReturnId    String?
+  taxYear        Int
+  originalAmount Decimal   @default(0)
+  utilisedAmount Decimal   @default(0)
+  status         String    @default("AVAILABLE")
+  expiresYear    Int?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id])
+  taxReturn TaxReturn? @relation(fields: [taxReturnId], references: [id])
+}
+
+model TaxReturnDocument {
+  id           String    @id @default(cuid())
+  taxReturnId  String
+  businessId   String
+  uploadedById String
+  name         String
+  description  String?
+  category     String    @default("OTHER")
+  mimeType     String?
+  size         Int?
+  url          String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  taxReturn  TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+  business   Business  @relation(fields: [businessId], references: [id])
+  uploadedBy User      @relation(fields: [uploadedById], references: [id])
+}
+
+model TaxReturnReview {
+  id          String                @id @default(cuid())
+  taxReturnId String
+  reviewerId  String
+  action      TaxReturnReviewAction
+  notes       String?               @db.Text
+  createdAt   DateTime              @default(now())
+
+  taxReturn TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+  reviewer  User      @relation(fields: [reviewerId], references: [id])
+}
+
 // ─── AUDIT LOG ───────────────────────────────────────────────────────────────
 
 model AuditLog {
-  id            String    @id @default(cuid())
-  userId        String?
-  businessId    String?
-  obligationId  String?
-  action        String
-  entity        String
-  entityId      String?
-  oldValue      Json?
-  newValue      Json?
-  ipAddress     String?
-  userAgent     String?
-  description   String?
-  createdAt     DateTime  @default(now())
+  id             String    @id @default(cuid())
+  userId         String?
+  organizationId String?
+  businessId     String?
+  obligationId   String?
+  taxReturnId    String?
+  action         String
+  entity         String
+  entityId       String?
+  oldValue       Json?
+  newValue       Json?
+  ipAddress      String?
+  userAgent      String?
+  description    String?
+  createdAt      DateTime  @default(now())
 
-  user          User?                 @relation(fields: [userId], references: [id])
-  business      Business?             @relation(fields: [businessId], references: [id])
-  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  user       User?                 @relation(fields: [userId], references: [id])
+  business   Business?             @relation(fields: [businessId], references: [id])
+  obligation ComplianceObligation? @relation(fields: [obligationId], references: [id])
 }
 
 // ─── ENUMS ────────────────────────────────────────────────────────────────────
@@ -571,6 +855,8 @@ enum MemberRole {
   OWNER
   ADMINISTRATOR
   ACCOUNTANT
+  TAX_PRACTITIONER
+  REVIEWER
   HR
   COMPLIANCE_OFFICER
   VIEWER
@@ -685,4 +971,40 @@ enum NotificationType {
   SUCCESS
   DEADLINE
   OVERDUE
+}
+
+enum TaxReturnType {
+  COMPANY_INCOME_TAX
+  TURNOVER_TAX
+  VAT
+  PAYE
+  WITHHOLDING_TAX
+}
+
+enum TaxReturnStatus {
+  DRAFT
+  PREPARED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  SUBMITTED
+  COMPLETED
+}
+
+enum TaxReturnReviewAction {
+  SUBMIT_FOR_REVIEW
+  APPROVE
+  REQUEST_CHANGES
+  SUBMIT_TO_ZRA
+  COMPLETE
+}
+
+enum CapitalAllowanceCategory {
+  INDUSTRIAL_BUILDING
+  COMMERCIAL_BUILDING
+  PLANT_MACHINERY
+  MOTOR_VEHICLE
+  COMPUTER_EQUIPMENT
+  FURNITURE_FITTINGS
+  OTHER
 }

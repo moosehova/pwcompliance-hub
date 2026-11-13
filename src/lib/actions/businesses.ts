@@ -1,22 +1,12 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-
-async function getOrgId() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-  const membership = await prisma.organizationMember.findFirst({
-    where: { userId: session.user.id },
-  });
-  if (!membership) throw new Error("No organization");
-  return { orgId: membership.organizationId, userId: session.user.id };
-}
+import { getOrgContext, requirePermission } from "@/lib/session";
 
 export async function getBusinesses() {
-  const { orgId } = await getOrgId();
+  const { orgId } = await getOrgContext();
   return prisma.business.findMany({
     where: { organizationId: orgId, deletedAt: null },
     include: {
@@ -27,7 +17,7 @@ export async function getBusinesses() {
 }
 
 export async function getBusinessById(id: string) {
-  const { orgId } = await getOrgId();
+  const { orgId } = await getOrgContext();
   return prisma.business.findFirst({
     where: { id, organizationId: orgId, deletedAt: null },
     include: {
@@ -65,7 +55,9 @@ const businessSchema = z.object({
 });
 
 export async function createBusiness(formData: unknown) {
-  const { orgId, userId } = await getOrgId();
+  const ctx = await getOrgContext();
+  await requirePermission(ctx, "business:manage");
+  const { orgId, userId } = ctx;
   const data = businessSchema.parse(formData);
 
   const business = await prisma.business.create({
@@ -106,7 +98,9 @@ export async function createBusiness(formData: unknown) {
 }
 
 export async function updateBusiness(id: string, formData: unknown) {
-  const { orgId, userId } = await getOrgId();
+  const ctx = await getOrgContext();
+  await requirePermission(ctx, "business:manage");
+  const { orgId, userId } = ctx;
   const data = businessSchema.partial().parse(formData);
 
   const existing = await prisma.business.findFirst({ where: { id, organizationId: orgId } });

@@ -1,31 +1,18 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { computeObligationStatus } from "@/lib/utils";
-
-async function getOrgContext() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-  const membership = await prisma.organizationMember.findFirst({
-    where: { userId: session.user.id },
-  });
-  if (!membership) throw new Error("No organization");
-  const businesses = await prisma.business.findMany({
-    where: { organizationId: membership.organizationId, deletedAt: null },
-    select: { id: true },
-  });
-  return { userId: session.user.id, orgId: membership.organizationId, businessIds: businesses.map((b) => b.id) };
-}
+import { getOrgContext, requirePermission } from "@/lib/session";
 
 export async function getObligations(params?: {
   businessId?: string;
   authorityCode?: string;
   status?: string;
 }) {
-  const { businessIds } = await getOrgContext();
+  const ctx = await getOrgContext();
+  const { businessIds } = ctx;
 
   const obligations = await prisma.complianceObligation.findMany({
     where: {
@@ -76,7 +63,9 @@ const updateStatusSchema = z.object({
 });
 
 export async function updateObligationStatus(data: z.infer<typeof updateStatusSchema>) {
-  const { businessIds, userId } = await getOrgContext();
+  const ctx = await getOrgContext();
+  await requirePermission(ctx, "compliance:manage");
+  const { businessIds, userId } = ctx;
   const parsed = updateStatusSchema.parse(data);
 
   const obligation = await prisma.complianceObligation.findFirst({

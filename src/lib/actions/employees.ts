@@ -1,24 +1,12 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-
-async function getContext() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-  const membership = await prisma.organizationMember.findFirst({ where: { userId: session.user.id } });
-  if (!membership) throw new Error("No organization");
-  const businesses = await prisma.business.findMany({
-    where: { organizationId: membership.organizationId, deletedAt: null },
-    select: { id: true },
-  });
-  return { userId: session.user.id, businessIds: businesses.map((b) => b.id) };
-}
+import { getOrgContext, requirePermission } from "@/lib/session";
 
 export async function getEmployees(params?: { businessId?: string; status?: string }) {
-  const { businessIds } = await getContext();
+  const { businessIds } = await getOrgContext();
   return prisma.employee.findMany({
     where: {
       businessId: params?.businessId ?? { in: businessIds },
@@ -33,7 +21,7 @@ export async function getEmployees(params?: { businessId?: string; status?: stri
 }
 
 export async function getEmployeeById(id: string) {
-  const { businessIds } = await getContext();
+  const { businessIds } = await getOrgContext();
   return prisma.employee.findFirst({
     where: { id, businessId: { in: businessIds }, deletedAt: null },
     include: {
@@ -68,7 +56,9 @@ const employeeSchema = z.object({
 });
 
 export async function createEmployee(formData: unknown) {
-  const { businessIds, userId } = await getContext();
+  const ctx = await getOrgContext();
+  await requirePermission(ctx, "employee:manage");
+  const { businessIds, userId } = ctx;
   const data = employeeSchema.parse(formData);
   if (!businessIds.includes(data.businessId)) throw new Error("Business not found");
 
@@ -98,7 +88,9 @@ export async function createEmployee(formData: unknown) {
 }
 
 export async function updateEmployee(id: string, formData: unknown) {
-  const { businessIds, userId } = await getContext();
+  const ctx = await getOrgContext();
+  await requirePermission(ctx, "employee:manage");
+  const { businessIds, userId } = ctx;
   const data = employeeSchema.partial().omit({ businessId: true }).parse(formData);
 
   const existing = await prisma.employee.findFirst({ where: { id, businessId: { in: businessIds } } });

@@ -1,20 +1,17 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { getOrgContext } from "@/lib/session";
 import { computeObligationStatus } from "@/lib/utils";
 
 export async function getDashboardData() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const { orgId, userId } = await getOrgContext();
 
   const membership = await prisma.organizationMember.findFirst({
-    where: { userId: session.user.id },
+    where: { userId, organizationId: orgId },
     include: { organization: true },
   });
   if (!membership) throw new Error("No organization found");
-
-  const orgId = membership.organizationId;
 
   const businesses = await prisma.business.findMany({
     where: { organizationId: orgId, deletedAt: null },

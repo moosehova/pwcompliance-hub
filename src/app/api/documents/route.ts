@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { getOrgContext } from "@/lib/session";
 
 const schema = z.object({
-  businessId: z.string(),
+  businessId: z.string().min(1),
   authorityId: z.string().optional(),
-  name: z.string(),
+  name: z.string().min(1),
   description: z.string().optional(),
   category: z.string().default("OTHER"),
-  url: z.string().url(),
+  url: z.string().url("Invalid URL"),
   periodLabel: z.string().optional(),
   expiryDate: z.string().optional(),
 });
@@ -19,19 +20,11 @@ export async function POST(req: Request) {
     const session = await auth();
     if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const membership = await prisma.organizationMember.findFirst({ where: { userId: session.user.id } });
-    if (!membership) return NextResponse.json({ error: "No organization" }, { status: 403 });
-
-    const businesses = await prisma.business.findMany({
-      where: { organizationId: membership.organizationId, deletedAt: null },
-      select: { id: true },
-    });
-    const businessIds = businesses.map((b) => b.id);
-
+    const ctx = await getOrgContext();
     const body = await req.json();
     const data = schema.parse(body);
 
-    if (!businessIds.includes(data.businessId)) {
+    if (!ctx.businessIds.includes(data.businessId)) {
       return NextResponse.json({ error: "Business not found" }, { status: 403 });
     }
 
@@ -47,6 +40,7 @@ export async function POST(req: Request) {
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
+        organizationId: ctx.orgId,
         businessId: data.businessId,
         action: "CREATE",
         entity: "Document",
@@ -59,6 +53,9 @@ export async function POST(req: Request) {
     return NextResponse.json(doc, { status: 201 });
   } catch (error) {
     console.error("[POST /api/documents]", error);
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Invalid data", details: error.errors }, { status: 400 });
+    }
     return NextResponse.json({ error: "Failed to save document" }, { status: 500 });
   }
 }
