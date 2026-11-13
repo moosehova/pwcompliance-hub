@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, AlertTriangle } from "lucide-react";
+import { FileText, Plus, AlertTriangle, Download, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { formatDate, getDaysUntil } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -122,9 +122,7 @@ export default async function DocumentsPage() {
                       <FileText className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:text-primary transition-colors">
-                        {doc.name}
-                      </a>
+                      <span className="text-sm font-medium">{doc.name}</span>
                       <p className="text-xs text-muted-foreground">
                         {doc.business.tradingName ?? doc.business.legalName}
                         {doc.authority ? ` · ${doc.authority.name}` : ""}
@@ -144,6 +142,11 @@ export default async function DocumentsPage() {
                           <p className="text-xs text-muted-foreground">{formatDate(doc.expiryDate)}</p>
                         </div>
                       )}
+                      <a href={`/api/vault/${doc.id}/download`} title="Download">
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </a>
                     </div>
                   </div>
                 );

@@ -477,6 +477,9 @@ export async function addFixedAsset(taxReturnId: string, formData: unknown) {
     where: { id: taxReturnId, organizationId: ctx.orgId, deletedAt: null },
   });
   if (!taxReturn) throw new Error("Tax return not found");
+  if (!["DRAFT", "CHANGES_REQUESTED"].includes(taxReturn.status)) {
+    throw new Error("Tax return cannot be modified in its current status");
+  }
 
   const data = assetSchema.parse(formData);
 

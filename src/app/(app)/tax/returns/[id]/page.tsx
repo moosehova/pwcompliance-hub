@@ -27,6 +27,7 @@ const TABS = [
   { label: "Income Statement", href: "/income-statement" },
   { label: "Tax Computation", href: "/computation" },
   { label: "Fixed Assets", href: "/assets" },
+  { label: "Documents", href: "/documents" },
 ];
 
 export default async function TaxReturnPage({

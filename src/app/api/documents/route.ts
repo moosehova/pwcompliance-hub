@@ -10,7 +10,7 @@ const schema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   category: z.string().default("OTHER"),
-  url: z.string().url("Invalid URL"),
+  url: z.string().url("Invalid URL").optional(),
   periodLabel: z.string().optional(),
   expiryDate: z.string().optional(),
 });
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     const doc = await prisma.document.create({
       data: {
         ...data,
+        organizationId: ctx.orgId,
         category: data.category as never,
         uploadedById: session.user.id,
         expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
