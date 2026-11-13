@@ -1,29 +1,20 @@
 import { NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import { existsSync } from "fs";
-import path from "path";
+import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrgContext } from "@/lib/session";
-import { randomUUID } from "crypto";
 
-const PRIVATE_DIR = path.join(process.cwd(), "private", "uploads");
-
-const ALLOWED_MIME_TYPES = new Set([
+const ALLOWED_MIME = new Set([
   "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
+  "image/jpeg", "image/png", "image/gif", "image/webp",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain",
-  "text/csv",
+  "text/plain", "text/csv",
 ]);
 
-const MAX_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 export async function POST(req: Request) {
   try {
@@ -31,163 +22,93 @@ export async function POST(req: Request) {
     if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const ctx = await getOrgContext();
-    const formData = await req.formData();
+    const fd = await req.formData();
 
-    const file = formData.get("file") as File | null;
-    if (!file || file.size === 0) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    const file = fd.get("file") as File | null;
+    if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
+
+    if (!ALLOWED_MIME.has(file.type)) {
+      return NextResponse.json({ error: "File type not permitted" }, { status: 422 });
+    }
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json({ error: "File exceeds 25 MB limit" }, { status: 422 });
     }
 
-    if (!ALLOWED_MIME_TYPES.has(file.type)) {
-      return NextResponse.json({ error: `File type not allowed: ${file.type}` }, { status: 400 });
-    }
-
-    if (file.size > MAX_SIZE_BYTES) {
-      return NextResponse.json({ error: "File exceeds 25 MB limit" }, { status: 400 });
-    }
-
-    const businessId = formData.get("businessId") as string | null;
-    const taxReturnId = formData.get("taxReturnId") as string | null;
-    const name = (formData.get("name") as string | null) || file.name;
-    const description = formData.get("description") as string | null;
-    const category = (formData.get("category") as string | null) || "OTHER";
-    const periodLabel = formData.get("periodLabel") as string | null;
-    const expiryDate = formData.get("expiryDate") as string | null;
-    const replaceDocId = formData.get("replaceDocId") as string | null; // existing doc to version
-
-    if (!businessId) {
-      return NextResponse.json({ error: "businessId is required" }, { status: 400 });
-    }
-
-    if (!ctx.businessIds.includes(businessId)) {
+    const businessId = fd.get("businessId") as string | null;
+    if (!businessId || !ctx.businessIds.includes(businessId)) {
       return NextResponse.json({ error: "Business not found" }, { status: 403 });
     }
 
-    // Determine version number
+    const name = (fd.get("name") as string | null) || file.name;
+    const description = fd.get("description") as string | undefined ?? undefined;
+    const category = (fd.get("category") as string | null) || "OTHER";
+    const authorityId = fd.get("authorityId") as string | undefined ?? undefined;
+    const periodLabel = fd.get("periodLabel") as string | undefined ?? undefined;
+    const expiryDate = fd.get("expiryDate") as string | undefined ?? undefined;
+    const replaceDocId = fd.get("replaceDocId") as string | null;
+
+    // Verify replacement document belongs to this org
+    let versionOf: string | undefined;
     let versionNumber = 1;
-    let versionOf: string | null = null;
-
     if (replaceDocId) {
-      const existing = taxReturnId
-        ? await prisma.taxReturnDocument.findFirst({
-            where: { id: replaceDocId, organizationId: ctx.orgId, deletedAt: null },
-            select: { id: true, versionOf: true, versionNumber: true },
-          })
-        : await prisma.document.findFirst({
-            where: { id: replaceDocId, organizationId: ctx.orgId, deletedAt: null },
-            select: { id: true, versionOf: true, versionNumber: true },
-          });
+      const existing = await prisma.document.findFirst({
+        where: { id: replaceDocId, organizationId: ctx.orgId, deletedAt: null },
+        select: { id: true, versionNumber: true },
+      });
+      if (!existing) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+      versionOf = existing.id;
+      versionNumber = existing.versionNumber + 1;
 
-      if (existing) {
-        const rootId = existing.versionOf ?? existing.id;
-        versionOf = rootId;
-        // Find highest version for this root
-        const highest = taxReturnId
-          ? await prisma.taxReturnDocument.aggregate({
-              where: { versionOf: rootId, deletedAt: null },
-              _max: { versionNumber: true },
-            })
-          : await prisma.document.aggregate({
-              where: { versionOf: rootId, deletedAt: null },
-              _max: { versionNumber: true },
-            });
-        const maxVer = highest._max.versionNumber ?? existing.versionNumber;
-        versionNumber = maxVer + 1;
-      }
+      // Mark previous as superseded
+      await prisma.document.update({
+        where: { id: replaceDocId },
+        data: { status: "SUPERSEDED" },
+      });
     }
 
-    // Build safe filename and path
-    const docId = randomUUID().replace(/-/g, "");
-    const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const folder = taxReturnId
-      ? path.join(PRIVATE_DIR, ctx.orgId, businessId, "tax", taxReturnId, docId)
-      : path.join(PRIVATE_DIR, ctx.orgId, businessId, docId);
+    // Store with a private path: orgId/businessId/uuid/filename
+    const docId = crypto.randomUUID().replace(/-/g, "");
+    const blobPath = `vault/${ctx.orgId}/${businessId}/${docId}/${file.name}`;
 
-    if (!existsSync(folder)) {
-      await mkdir(folder, { recursive: true });
-    }
+    // Upload to Vercel Blob — access:'public' but path is non-guessable UUID
+    const blob = await put(blobPath, file, { access: "public" });
 
-    const storagePath = path.join(folder, safeFilename);
-    const bytes = await file.arrayBuffer();
-    await writeFile(storagePath, Buffer.from(bytes));
+    const doc = await prisma.document.create({
+      data: {
+        organizationId: ctx.orgId,
+        businessId,
+        authorityId: authorityId || undefined,
+        obligationId: undefined,
+        uploadedById: session.user.id,
+        name,
+        description,
+        category: category as never,
+        mimeType: file.type,
+        size: file.size,
+        blobUrl: blob.url,
+        periodLabel,
+        expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+        versionNumber,
+        versionOf,
+      },
+    });
 
-    // Persist to DB
-    if (taxReturnId) {
-      // Verify tax return ownership
-      const tr = await prisma.taxReturn.findFirst({
-        where: { id: taxReturnId, organizationId: ctx.orgId },
-        select: { id: true },
-      });
-      if (!tr) return NextResponse.json({ error: "Tax return not found" }, { status: 403 });
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        organizationId: ctx.orgId,
+        businessId,
+        action: "CREATE",
+        entity: "Document",
+        entityId: doc.id,
+        newValue: { name, mimeType: file.type, size: file.size, versionNumber },
+        description: versionOf
+          ? `Uploaded replacement document v${versionNumber}: ${name}`
+          : `Uploaded document: ${name}`,
+      },
+    });
 
-      const doc = await prisma.taxReturnDocument.create({
-        data: {
-          id: docId,
-          organizationId: ctx.orgId,
-          taxReturnId,
-          businessId,
-          uploadedById: session.user.id,
-          name,
-          description,
-          category,
-          mimeType: file.type,
-          size: file.size,
-          storagePath,
-          versionNumber,
-          versionOf,
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          userId: session.user.id,
-          organizationId: ctx.orgId,
-          businessId,
-          taxReturnId,
-          action: "CREATE",
-          entity: "TaxReturnDocument",
-          entityId: doc.id,
-          newValue: { name, versionNumber },
-          description: `Uploaded tax document v${versionNumber}: ${name}`,
-        },
-      });
-
-      return NextResponse.json({ id: doc.id, name: doc.name, size: doc.size, versionNumber }, { status: 201 });
-    } else {
-      const doc = await prisma.document.create({
-        data: {
-          id: docId,
-          organizationId: ctx.orgId,
-          businessId,
-          uploadedById: session.user.id,
-          name,
-          description,
-          category: category as never,
-          mimeType: file.type,
-          size: file.size,
-          storagePath,
-          periodLabel,
-          expiryDate: expiryDate ? new Date(expiryDate) : null,
-          versionNumber,
-          versionOf,
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          userId: session.user.id,
-          organizationId: ctx.orgId,
-          businessId,
-          action: "CREATE",
-          entity: "Document",
-          entityId: doc.id,
-          newValue: { name, versionNumber },
-          description: `Uploaded document v${versionNumber}: ${name}`,
-        },
-      });
-
-      return NextResponse.json({ id: doc.id, name: doc.name, size: doc.size, versionNumber }, { status: 201 });
-    }
+    return NextResponse.json({ id: doc.id, name: doc.name }, { status: 201 });
   } catch (error) {
     console.error("[POST /api/vault/upload]", error);
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });

@@ -72,6 +72,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission[]> = {
     "compliance:view", "compliance:manage",
     "payment:view", "payment:manage",
     "document:view", "document:manage",
+    "tax:view",
     "report:view",
   ],
   VIEWER: [

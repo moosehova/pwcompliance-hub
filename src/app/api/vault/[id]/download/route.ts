@@ -1,7 +1,4 @@
 import { NextResponse } from "next/server";
-import { createReadStream, existsSync, statSync } from "fs";
-import { Readable } from "stream";
-import path from "path";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrgContext } from "@/lib/session";
@@ -14,56 +11,39 @@ export async function GET(
     const session = await auth();
     if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id } = await params;
     const ctx = await getOrgContext();
-
-    // Look up in both document tables
-    let storagePath: string | null = null;
-    let mimeType: string | null = null;
-    let name = "document";
+    const { id } = await params;
 
     const doc = await prisma.document.findFirst({
       where: { id, organizationId: ctx.orgId, deletedAt: null },
-      select: { storagePath: true, mimeType: true, name: true },
+      select: { id: true, name: true, mimeType: true, blobUrl: true },
     });
 
-    if (doc) {
-      storagePath = doc.storagePath;
-      mimeType = doc.mimeType;
-      name = doc.name;
-    } else {
-      const taxDoc = await prisma.taxReturnDocument.findFirst({
-        where: { id, organizationId: ctx.orgId, deletedAt: null },
-        select: { storagePath: true, mimeType: true, name: true },
-      });
-      if (taxDoc) {
-        storagePath = taxDoc.storagePath;
-        mimeType = taxDoc.mimeType;
-        name = taxDoc.name;
-      }
-    }
+    if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!doc.blobUrl) return NextResponse.json({ error: "No file stored" }, { status: 404 });
 
-    if (!storagePath) {
-      return NextResponse.json({ error: "Document not found" }, { status: 404 });
-    }
+    // Proxy file from Vercel Blob — blob URL never leaves the server
+    const upstream = await fetch(doc.blobUrl);
+    if (!upstream.ok) return NextResponse.json({ error: "File unavailable" }, { status: 502 });
 
-    if (!existsSync(storagePath)) {
-      return NextResponse.json({ error: "File not found on server" }, { status: 404 });
-    }
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        organizationId: ctx.orgId,
+        action: "READ",
+        entity: "Document",
+        entityId: doc.id,
+        description: `Downloaded document: ${doc.name}`,
+      },
+    });
 
-    const stat = statSync(storagePath);
-    const ext = path.extname(storagePath);
-    const disposition = `attachment; filename="${encodeURIComponent(name)}${ext}"`;
+    const contentType = doc.mimeType || "application/octet-stream";
+    const filename = encodeURIComponent(doc.name);
 
-    // Stream the file
-    const nodeStream = createReadStream(storagePath);
-    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
-
-    return new Response(webStream, {
+    return new Response(upstream.body, {
       headers: {
-        "Content-Type": mimeType ?? "application/octet-stream",
-        "Content-Disposition": disposition,
-        "Content-Length": String(stat.size),
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename*=UTF-8''${filename}`,
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
       },

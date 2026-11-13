@@ -96,7 +96,7 @@ export default async function TaxReturnDocumentsPage({
                         {doc.versions.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {doc.versions.slice(0, 3).map((v) => (
-                              <a key={v.id} href={`/api/vault/${v.id}/download`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                              <a key={v.id} href={`/api/vault/tax/${v.id}/download`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                                 v{v.versionNumber}
                               </a>
                             ))}
@@ -110,7 +110,7 @@ export default async function TaxReturnDocumentsPage({
                         {latestVersion > 1 && (
                           <Badge variant="outline" className="text-xs">v{latestVersion}</Badge>
                         )}
-                        <a href={`/api/vault/${latestId}/download`}>
+                        <a href={`/api/vault/tax/${latestId}/download`}>
                           <Button variant="ghost" size="icon" className="h-8 w-8" title="Download latest version">
                             <Download className="h-4 w-4" />
                           </Button>

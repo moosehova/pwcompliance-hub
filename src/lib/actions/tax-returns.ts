@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getOrgContext, requirePermission } from "@/lib/session";
+import { computeTax } from "@/lib/tax-computation";
 import type { TaxReturnStatus, TaxReturnReviewAction } from "@prisma/client";
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -363,15 +364,9 @@ export async function updateTaxComputation(taxReturnId: string, formData: unknow
   const addbackEntertainment = toD(data.addbackEntertainment);
   const addbackFines = toD(data.addbackFines);
   const addbackOther = toD(data.addbackOther);
-  const totalAddbacks = addbackDepreciation + addbackEntertainment + addbackFines + addbackOther;
-
   const capitalAllowances = toD(data.capitalAllowances);
   const otherAllowableDeductions = toD(data.otherAllowableDeductions);
-  const totalDeductions = capitalAllowances + otherAllowableDeductions;
-
   const lossesUtilised = toD(data.lossesUtilised);
-
-  const taxableProfit = accountingProfit + totalAddbacks - totalDeductions - lossesUtilised;
 
   // Apply tax rate from verified rule (or manual override if rule not available)
   let taxRate = toD(data.taxRate);
@@ -392,15 +387,26 @@ export async function updateTaxComputation(taxReturnId: string, formData: unknow
     };
   }
 
-  const grossTaxLiability = taxableProfit > 0 ? (taxableProfit * taxRate) / 100 : 0;
-
   const taxCredits = toD(data.taxCredits);
   const advanceTaxPaid = toD(data.advanceTaxPaid);
   const whtCredits = toD(data.whtCredits);
-  const totalCredits = taxCredits + advanceTaxPaid + whtCredits;
 
-  const netTaxPayable = Math.max(0, grossTaxLiability - totalCredits);
-  const taxRefundable = Math.max(0, totalCredits - grossTaxLiability);
+  const {
+    totalAddbacks,
+    totalDeductions,
+    taxableProfit,
+    grossTaxLiability,
+    totalCredits,
+    netTaxPayable,
+    taxRefundable,
+  } = computeTax({
+    accountingProfit,
+    addbackDepreciation, addbackEntertainment, addbackFines, addbackOther,
+    capitalAllowances, otherAllowableDeductions,
+    lossesUtilised,
+    taxRate,
+    taxCredits, advanceTaxPaid, whtCredits,
+  });
 
   await prisma.taxReturnComputation.upsert({
     where: { taxReturnId },

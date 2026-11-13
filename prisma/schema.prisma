@@ -443,7 +443,7 @@ model Document {
   mimeType        String?
   size            Int?
   url             String?
-  storagePath     String?
+  blobUrl         String?
   expiryDate      DateTime?
   periodLabel     String?
   status          DocumentStatus   @default(ACTIVE)
@@ -798,22 +798,23 @@ model TaxLoss {
 }
 
 model TaxReturnDocument {
-  id             String    @id @default(cuid())
+  id             String              @id @default(cuid())
   organizationId String
   taxReturnId    String
   businessId     String
   uploadedById   String
   name           String
   description    String?
-  category       String    @default("OTHER")
+  category       TaxDocumentCategory @default(OTHER_SUPPORTING)
+  taxYear        Int?
   mimeType       String?
   size           Int?
   url            String?
-  storagePath    String?
-  versionNumber  Int       @default(1)
+  blobUrl        String?
+  versionNumber  Int                 @default(1)
   versionOf      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   deletedAt      DateTime?
 
   organization Organization       @relation(fields: [organizationId], references: [id])
@@ -977,6 +978,21 @@ enum DocumentStatus {
   EXPIRED
   SUPERSEDED
   DELETED
+}
+
+enum TaxDocumentCategory {
+  BANK_STATEMENTS
+  FINANCIAL_STATEMENTS
+  TRIAL_BALANCES
+  INVOICES_AND_RECEIPTS
+  TAX_CERTIFICATES
+  CAPITAL_ALLOWANCE_SCHEDULES
+  PAYROLL_RECORDS
+  ZRA_CORRESPONDENCE
+  PACRA_DOCUMENTS
+  NAPSA_DOCUMENTS
+  NHIMA_DOCUMENTS
+  OTHER_SUPPORTING
 }
 
 enum ReminderStatus {
