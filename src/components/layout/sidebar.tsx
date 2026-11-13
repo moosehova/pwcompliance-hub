@@ -20,6 +20,10 @@ import {
   Landmark,
   Wallet,
   LogOut,
+  Calculator,
+  BookOpen,
+  ListChecks,
+  FolderOpen,
 } from "lucide-react";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
@@ -47,6 +51,16 @@ const navItems: NavItem[] = [
       { label: "NHIMA", href: "/compliance/nhima", icon: Users },
     ],
   },
+  {
+    label: "Tax Prep",
+    icon: Calculator,
+    children: [
+      { label: "Overview", href: "/tax", icon: Calculator },
+      { label: "Returns", href: "/tax/returns", icon: ListChecks },
+      { label: "Documents", href: "/tax/documents", icon: FolderOpen },
+      { label: "Tax Rules", href: "/tax/rules", icon: BookOpen },
+    ],
+  },
   { label: "Employees", href: "/employees", icon: Users },
   { label: "Payroll", href: "/payroll", icon: Wallet },
   { label: "Payments", href: "/payments", icon: Receipt },
@@ -64,7 +78,7 @@ interface SidebarProps {
 
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
-  const [openGroups, setOpenGroups] = useState<string[]>(["Compliance"]);
+  const [openGroups, setOpenGroups] = useState<string[]>(["Compliance", "Tax Prep"]);
 
   const toggleGroup = (label: string) => {
     setOpenGroups((prev) =>
