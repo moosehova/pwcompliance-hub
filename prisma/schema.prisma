@@ -1,0 +1,688 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   OrganizationMember[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  uploadedDocs  Document[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── ORGANIZATION ────────────────────────────────────────────────────────────
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  logo        String?
+  website     String?
+  phone       String?
+  email       String?
+  address     String?
+  plan        OrgPlan  @default(FREE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  members     OrganizationMember[]
+  businesses  Business[]
+  settings    OrganizationSetting[]
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MemberRole       @default(VIEWER)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+}
+
+model OrganizationSetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  key            String
+  value          String       @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+}
+
+// ─── BUSINESS ────────────────────────────────────────────────────────────────
+
+model Business {
+  id               String         @id @default(cuid())
+  organizationId   String
+  legalName        String
+  tradingName      String?
+  businessType     BusinessType
+  industry         String?
+  pacraNumber      String?
+  tpin             String?
+  napsaEmployerNo  String?
+  nhimaEmployerNo  String?
+  vatNumber        String?
+  physicalAddress  String?
+  postalAddress    String?
+  phone            String?
+  email            String?
+  website          String?
+  country          String         @default("ZM")
+  status           BusinessStatus @default(ACTIVE)
+  incorporatedDate DateTime?
+  financialYearEnd Int?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees          Employee[]
+  obligations        ComplianceObligation[]
+  businessRequirements BusinessRequirement[]
+  payments           Payment[]
+  documents          Document[]
+  directors          Director[]
+  shareholders       Shareholder[]
+  payrolls           Payroll[]
+  auditLogs          AuditLog[]
+  reminders          Reminder[]
+  submissions        Submission[]
+}
+
+model Director {
+  id          String    @id @default(cuid())
+  businessId  String
+  name        String
+  nrc         String?
+  email       String?
+  phone       String?
+  nationality String?
+  position    String?
+  appointedAt DateTime?
+  resignedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Shareholder {
+  id              String    @id @default(cuid())
+  businessId      String
+  name            String
+  type            String    @default("individual")
+  nrc             String?
+  sharesHeld      Int?
+  sharePercentage Decimal?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  business        Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+// ─── AUTHORITY & COMPLIANCE ENGINE ───────────────────────────────────────────
+
+model Authority {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  fullName    String?
+  description String?
+  website     String?
+  contactEmail String?
+  contactPhone String?
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  requirements ComplianceRequirement[]
+  rules        AuthorityRule[]
+  obligations  ComplianceObligation[]
+  submissions  Submission[]
+  payments     Payment[]
+  documents    Document[]
+}
+
+model ComplianceRequirement {
+  id              String            @id @default(cuid())
+  authorityId     String
+  code            String
+  name            String
+  description     String?
+  frequency       RequirementFrequency
+  applicableTo    String[]
+  defaultDueDayOfMonth  Int?
+  defaultDueDayOfYear   String?
+  gracePeriodDays Int               @default(0)
+  active          Boolean           @default(true)
+  mandatory       Boolean           @default(true)
+  category        String?
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  authority         Authority            @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  businessRequirements BusinessRequirement[]
+  obligations       ComplianceObligation[]
+
+  @@unique([authorityId, code])
+}
+
+model BusinessRequirement {
+  id            String    @id @default(cuid())
+  businessId    String
+  requirementId String
+  enabled       Boolean   @default(true)
+  customDueDays Int?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  requirement   ComplianceRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, requirementId])
+}
+
+model ComplianceObligation {
+  id              String            @id @default(cuid())
+  businessId      String
+  authorityId     String
+  requirementId   String
+  title           String
+  periodLabel     String
+  periodStart     DateTime
+  periodEnd       DateTime
+  dueDate         DateTime
+  status          ObligationStatus  @default(UPCOMING)
+  amountDue       Decimal?
+  currency        String            @default("ZMW")
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  business        Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority       Authority             @relation(fields: [authorityId], references: [id])
+  requirement     ComplianceRequirement @relation(fields: [requirementId], references: [id])
+  submissions     Submission[]
+  payments        Payment[]
+  documents       Document[]
+  reminders       Reminder[]
+  auditLogs       AuditLog[]
+}
+
+// ─── SUBMISSION ───────────────────────────────────────────────────────────────
+
+model Submission {
+  id            String           @id @default(cuid())
+  businessId    String
+  authorityId   String
+  obligationId  String?
+  referenceNo   String?
+  submittedAt   DateTime?
+  submittedBy   String?
+  method        String?
+  status        SubmissionStatus @default(DRAFT)
+  channel       String?
+  confirmationNo String?
+  notes         String?          @db.Text
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority     Authority             @relation(fields: [authorityId], references: [id])
+  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  documents     Document[]
+}
+
+// ─── PAYMENT ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id            String        @id @default(cuid())
+  businessId    String
+  authorityId   String
+  obligationId  String?
+  description   String
+  amount        Decimal
+  currency      String        @default("ZMW")
+  paidAt        DateTime?
+  paymentMethod String?
+  referenceNo   String?
+  bankName      String?
+  branchName    String?
+  status        PaymentStatus @default(PENDING)
+  notes         String?       @db.Text
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority     Authority             @relation(fields: [authorityId], references: [id])
+  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  receipts      Document[]
+}
+
+// ─── EMPLOYEE ─────────────────────────────────────────────────────────────────
+
+model Employee {
+  id               String           @id @default(cuid())
+  businessId       String
+  employeeNo       String?
+  firstName        String
+  lastName         String
+  nrc              String?
+  dob              DateTime?
+  gender           String?
+  phone            String?
+  email            String?
+  address          String?
+  jobTitle         String?
+  department       String?
+  employedAt       DateTime?
+  terminatedAt     DateTime?
+  status           EmployeeStatus   @default(ACTIVE)
+  basicSalary      Decimal?
+  currency         String           @default("ZMW")
+  napsaNumber      String?
+  nhimaNumber      String?
+  tpin             String?
+  bankName         String?
+  bankAccountNo    String?
+  bankSortCode     String?
+  emergencyContact String?
+  emergencyPhone   String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+
+  business         Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  payrollItems     PayrollItem[]
+
+  @@unique([businessId, employeeNo])
+}
+
+// ─── PAYROLL ─────────────────────────────────────────────────────────────────
+
+model Payroll {
+  id            String        @id @default(cuid())
+  businessId    String
+  periodLabel   String
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        PayrollStatus @default(DRAFT)
+  totalGross    Decimal       @default(0)
+  totalNapsa    Decimal       @default(0)
+  totalNhima    Decimal       @default(0)
+  totalPaye     Decimal       @default(0)
+  totalNet      Decimal       @default(0)
+  processedAt   DateTime?
+  notes         String?       @db.Text
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items         PayrollItem[]
+}
+
+model PayrollItem {
+  id               String   @id @default(cuid())
+  payrollId        String
+  employeeId       String
+  basicSalary      Decimal  @default(0)
+  allowances       Decimal  @default(0)
+  grossSalary      Decimal  @default(0)
+  napsaEmployee    Decimal  @default(0)
+  napsaEmployer    Decimal  @default(0)
+  nhimaEmployee    Decimal  @default(0)
+  nhimaEmployer    Decimal  @default(0)
+  paye             Decimal  @default(0)
+  otherDeductions  Decimal  @default(0)
+  netSalary        Decimal  @default(0)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  payroll          Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([payrollId, employeeId])
+}
+
+// ─── DOCUMENT ─────────────────────────────────────────────────────────────────
+
+model Document {
+  id            String       @id @default(cuid())
+  businessId    String
+  authorityId   String?
+  obligationId  String?
+  submissionId  String?
+  paymentId     String?
+  uploadedById  String
+  name          String
+  description   String?
+  category      DocumentCategory @default(OTHER)
+  mimeType      String?
+  size          Int?
+  url           String
+  expiryDate    DateTime?
+  periodLabel   String?
+  status        DocumentStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authority     Authority?            @relation(fields: [authorityId], references: [id])
+  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
+  submission    Submission?           @relation(fields: [submissionId], references: [id])
+  payment       Payment?              @relation(fields: [paymentId], references: [id])
+  uploadedBy    User                  @relation(fields: [uploadedById], references: [id])
+}
+
+// ─── REMINDERS & NOTIFICATIONS ───────────────────────────────────────────────
+
+model Reminder {
+  id            String         @id @default(cuid())
+  businessId    String
+  obligationId  String?
+  title         String
+  message       String?        @db.Text
+  dueDate       DateTime
+  scheduledAt   DateTime
+  sentAt        DateTime?
+  status        ReminderStatus @default(PENDING)
+  channel       String         @default("in_app")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String
+  title     String
+  message   String             @db.Text
+  type      NotificationType   @default(INFO)
+  readAt    DateTime?
+  link      String?
+  metadata  Json?
+  createdAt DateTime           @default(now())
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── STATUTORY RULES ─────────────────────────────────────────────────────────
+
+model AuthorityRule {
+  id            String    @id @default(cuid())
+  authorityId   String
+  name          String
+  description   String?
+  ruleType      String
+  value         String    @db.Text
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  source        String?
+  notes         String?   @db.Text
+  active        Boolean   @default(true)
+  verifiedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  authority     Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+}
+
+model TaxRule {
+  id            String    @id @default(cuid())
+  name          String
+  taxType       String
+  description   String?
+  brackets      Json?
+  flatRate      Decimal?
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  source        String?
+  notes         String?   @db.Text
+  active        Boolean   @default(true)
+  verifiedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model ContributionRule {
+  id               String    @id @default(cuid())
+  name             String
+  contributionType String
+  description      String?
+  employeeRate     Decimal?
+  employerRate     Decimal?
+  ceiling          Decimal?
+  floor            Decimal?
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  source           String?
+  notes            String?   @db.Text
+  active           Boolean   @default(true)
+  verifiedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+// ─── AUDIT LOG ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id            String    @id @default(cuid())
+  userId        String?
+  businessId    String?
+  obligationId  String?
+  action        String
+  entity        String
+  entityId      String?
+  oldValue      Json?
+  newValue      Json?
+  ipAddress     String?
+  userAgent     String?
+  description   String?
+  createdAt     DateTime  @default(now())
+
+  user          User?                 @relation(fields: [userId], references: [id])
+  business      Business?             @relation(fields: [businessId], references: [id])
+  obligation    ComplianceObligation? @relation(fields: [obligationId], references: [id])
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
+
+enum OrgPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  BUSINESS
+  ACCOUNTING_FIRM
+}
+
+enum MemberRole {
+  OWNER
+  ADMINISTRATOR
+  ACCOUNTANT
+  HR
+  COMPLIANCE_OFFICER
+  VIEWER
+}
+
+enum BusinessType {
+  PRIVATE_LIMITED
+  PUBLIC_LIMITED
+  SOLE_TRADER
+  PARTNERSHIP
+  NGO
+  TRUST
+  OTHER
+}
+
+enum BusinessStatus {
+  ACTIVE
+  DORMANT
+  LIQUIDATED
+  DEREGISTERED
+}
+
+enum RequirementFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+  ONCE
+  AD_HOC
+}
+
+enum ObligationStatus {
+  UPCOMING
+  DUE_SOON
+  DUE
+  OVERDUE
+  SUBMITTED
+  PENDING_PAYMENT
+  PAID
+  COMPLETED
+  NOT_APPLICABLE
+  CANCELLED
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  PENDING_REVIEW
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIALLY_PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  ON_LEAVE
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSING
+  PROCESSED
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum DocumentCategory {
+  PACRA
+  ZRA
+  NAPSA
+  NHIMA
+  PAYROLL
+  TAX
+  COMPANY_REGISTRATION
+  LICENCE
+  CERTIFICATE
+  RECEIPT
+  RETURN
+  CONTRACT
+  OTHER
+}
+
+enum DocumentStatus {
+  ACTIVE
+  EXPIRED
+  SUPERSEDED
+  DELETED
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ERROR
+  SUCCESS
+  DEADLINE
+  OVERDUE
+}
